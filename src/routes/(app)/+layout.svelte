@@ -52,10 +52,14 @@
 	const i18n = getContext('i18n');
 
 	let loaded = false;
+	let initializing = false;
 	let DB = null;
 	let localDBChats = [];
 
 	let version;
+	$: publicChatMode = $config?.features?.public_chat_mode ?? false;
+
+	const isAllowedPublicRoute = (pathname: string) => pathname === '/' || pathname.startsWith('/c/');
 
 	const clearChatInputStorage = () => {
 		const chatInputKeys = Object.keys(localStorage).filter((key) => key.startsWith('chat-input'));
@@ -192,15 +196,18 @@
 		tools.set(toolsData);
 	};
 
-	onMount(async () => {
+	const initializeLayout = async () => {
+		if (initializing || loaded) {
+			return;
+		}
 		if ($user === undefined || $user === null) {
-			await goto('/auth');
 			return;
 		}
 		if (!['user', 'admin'].includes($user?.role)) {
 			return;
 		}
 
+		initializing = true;
 		clearChatInputStorage();
 		await Promise.all([
 			checkLocalDBChats(),
@@ -271,7 +278,7 @@
 					console.log('Shortcut triggered: DELETE_CHAT');
 					event.preventDefault();
 					document.getElementById('delete-chat-button')?.click();
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.OPEN_SETTINGS])) {
+				} else if (!publicChatMode && isShortcutMatch(event, shortcuts[Shortcut.OPEN_SETTINGS])) {
 					console.log('Shortcut triggered: OPEN_SETTINGS');
 					event.preventDefault();
 					showSettings.set(!$showSettings);
@@ -320,7 +327,9 @@
 			showChangelog.set($settings?.version !== $config.version);
 		}
 
-		if ($user?.role === 'admin' || ($user?.permissions?.chat?.temporary ?? true)) {
+		if (publicChatMode) {
+			temporaryChatEnabled.set(true);
+		} else if ($user?.role === 'admin' || ($user?.permissions?.chat?.temporary ?? true)) {
 			if ($page.url.searchParams.get('temporary-chat') === 'true') {
 				temporaryChatEnabled.set(true);
 			}
@@ -364,7 +373,30 @@
 		await tick();
 
 		loaded = true;
+		initializing = false;
+	};
+
+	onMount(async () => {
+		if (publicChatMode && !isAllowedPublicRoute($page.url.pathname)) {
+			await goto('/');
+			return;
+		}
+
+		if (!publicChatMode && ($user === undefined || $user === null)) {
+			await goto('/auth');
+			return;
+		}
+
+		await initializeLayout();
 	});
+
+	$: if (publicChatMode && !isAllowedPublicRoute($page.url.pathname)) {
+		goto('/');
+	}
+
+	$: if (!loaded && $user && ['user', 'admin'].includes($user?.role)) {
+		initializeLayout();
+	}
 
 	const checkForVersionUpdates = async () => {
 		version = await getVersionUpdates(localStorage.token).catch((error) => {
@@ -376,7 +408,9 @@
 	};
 </script>
 
-<SettingsModal bind:show={$showSettings} />
+{#if !publicChatMode}
+	<SettingsModal bind:show={$showSettings} />
+{/if}
 <ChangelogModal bind:show={$showChangelog} />
 
 {#if version && compareVersion(version.latest, version.current) && ($settings?.showUpdateToast ?? true)}
@@ -454,13 +488,15 @@
 					</div>
 				{/if}
 
-				<Sidebar />
+				{#if !publicChatMode}
+					<Sidebar />
+				{/if}
 
 				{#if loaded}
 					<slot />
 				{:else}
 					<div
-						class="w-full flex-1 h-full flex items-center justify-center {$showSidebar
+						class="w-full flex-1 h-full flex items-center justify-center {!publicChatMode && $showSidebar
 							? '  md:max-w-[calc(100%-var(--sidebar-width))]'
 							: ' '}"
 					>

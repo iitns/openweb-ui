@@ -270,6 +270,7 @@ type Config = {
 	default_prompt_suggestions: PromptSuggestion[];
 	features: {
 		auth: boolean;
+		public_chat_mode?: boolean;
 		auth_trusted_header: boolean;
 		enable_api_keys: boolean;
 		enable_signup: boolean;

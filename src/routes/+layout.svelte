@@ -50,7 +50,7 @@
 	import 'tippy.js/dist/tippy.css';
 
 	import { executeToolServer, getBackendConfig, getModels, getVersion } from '$lib/apis';
-	import { getSessionUser, userSignOut } from '$lib/apis/auths';
+	import { createPublicSession, getSessionUser, userSignOut } from '$lib/apis/auths';
 	import { getAllTags, getChatList } from '$lib/apis/chats';
 	import { chatCompletion } from '$lib/apis/openai';
 	import {
@@ -940,11 +940,30 @@
 
 				const currentUrl = `${window.location.pathname}${window.location.search}`;
 				const encodedUrl = encodeURIComponent(currentUrl);
+				const isPublicChatMode = backendConfig?.features?.public_chat_mode ?? false;
+				const createGuestSession = async () => {
+					const publicSession = await createPublicSession().catch((error) => {
+						toast.error(`${error}`);
+						return null;
+					});
+
+					if (publicSession?.token) {
+						localStorage.token = publicSession.token;
+						await user.set(publicSession);
+						await config.set(await getBackendConfig());
+
+						if ($page.url.pathname === '/auth') {
+							await goto('/');
+						}
+					}
+				};
 
 				if (localStorage.token) {
 					// Get Session User Info
 					const sessionUser = await getSessionUser(localStorage.token).catch((error) => {
-						toast.error(`${error}`);
+						if (!isPublicChatMode) {
+							toast.error(`${error}`);
+						}
 						return null;
 					});
 
@@ -956,15 +975,22 @@
 							console.error('Error refreshing backend config:', error);
 						}
 					} else {
-						// Redirect Invalid Session User to /auth Page
 						localStorage.removeItem('token');
-						await goto(`/auth?redirect=${encodedUrl}`);
+						if (isPublicChatMode) {
+							await createGuestSession();
+						} else {
+							await goto(`/auth?redirect=${encodedUrl}`);
+						}
 					}
 				} else {
-					// Don't redirect if we're already on the auth page
-					// Needed because we pass in tokens from OAuth logins via URL fragments
-					if ($page.url.pathname !== '/auth') {
-						await goto(`/auth?redirect=${encodedUrl}`);
+					if (isPublicChatMode) {
+						await createGuestSession();
+					} else {
+						// Don't redirect if we're already on the auth page
+						// Needed because we pass in tokens from OAuth logins via URL fragments
+						if ($page.url.pathname !== '/auth') {
+							await goto(`/auth?redirect=${encodedUrl}`);
+						}
 					}
 				}
 			}

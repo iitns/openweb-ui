@@ -130,6 +130,7 @@ if WEBUI_NAME != 'Open WebUI':
     WEBUI_NAME += ' (Open WebUI)'
 
 WEBUI_FAVICON_URL = 'https://openwebui.com/favicon.png'
+PUBLIC_CHAT_MODE = os.environ.get('PUBLIC_CHAT_MODE', 'False').lower() == 'true'
 
 TRUSTED_SIGNATURE_KEY = os.environ.get('TRUSTED_SIGNATURE_KEY', '')
 

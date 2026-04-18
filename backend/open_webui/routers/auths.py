@@ -42,6 +42,7 @@ from open_webui.env import (
     ENABLE_INITIAL_ADMIN_SIGNUP,
     ENABLE_OAUTH_TOKEN_EXCHANGE,
     AIOHTTP_CLIENT_SESSION_SSL,
+    PUBLIC_CHAT_MODE,
 )
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse, Response, JSONResponse
@@ -160,6 +161,80 @@ class SessionUserInfoResponse(SessionUserResponse, UserStatus):
     bio: Optional[str] = None
     gender: Optional[str] = None
     date_of_birth: Optional[datetime.date] = None
+
+
+@router.post('/public', response_model=SessionUserResponse)
+async def create_public_session(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_session),
+):
+    if not PUBLIC_CHAT_MODE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+        )
+
+    guest_id = uuid.uuid4().hex
+    guest_email = f'guest+{guest_id}@public.local'
+    guest_name = f'Guest {guest_id[:8]}'
+
+    user = Auths.insert_new_auth(
+        guest_email,
+        get_password_hash(uuid.uuid4().hex),
+        guest_name,
+        None,
+        'user',
+        db=db,
+    )
+
+    if not user:
+        raise HTTPException(500, detail=ERROR_MESSAGES.CREATE_USER_ERROR)
+
+    apply_default_group_assignment(
+        request.app.state.config.DEFAULT_GROUP_ID,
+        user.id,
+        db=db,
+    )
+
+    expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
+    expires_at = None
+    if expires_delta:
+        expires_at = int(time.time()) + int(expires_delta.total_seconds())
+
+    token = create_token(
+        data={'id': user.id},
+        expires_delta=expires_delta,
+    )
+
+    response.set_cookie(
+        key='token',
+        value=token,
+        expires=(
+            datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
+            if expires_at
+            else None
+        ),
+        httponly=True,
+        samesite=WEBUI_AUTH_COOKIE_SAME_SITE,
+        secure=WEBUI_AUTH_COOKIE_SECURE,
+    )
+
+    user_permissions = get_permissions(
+        user.id, request.app.state.config.USER_PERMISSIONS, db=db
+    )
+
+    return {
+        'token': token,
+        'token_type': 'Bearer',
+        'expires_at': expires_at,
+        'id': user.id,
+        'email': user.email,
+        'name': user.name,
+        'role': user.role,
+        'profile_image_url': user.profile_image_url,
+        'permissions': user_permissions,
+    }
 
 
 @router.get('/', response_model=SessionUserInfoResponse)

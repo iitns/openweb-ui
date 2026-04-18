@@ -504,6 +504,7 @@ from open_webui.env import (
     AIOHTTP_CLIENT_SESSION_SSL,
     ENABLE_STAR_SESSIONS_MIDDLEWARE,
     ENABLE_PUBLIC_ACTIVE_USERS_COUNT,
+    PUBLIC_CHAT_MODE,
     # Admin Account Runtime Creation
     WEBUI_ADMIN_EMAIL,
     WEBUI_ADMIN_PASSWORD,
@@ -2046,6 +2047,7 @@ async def get_app_config(request: Request):
         'oauth': {'providers': {name: config.get('name', name) for name, config in OAUTH_PROVIDERS.items()}},
         'features': {
             'auth': WEBUI_AUTH,
+            'public_chat_mode': PUBLIC_CHAT_MODE,
             'auth_trusted_header': bool(app.state.AUTH_TRUSTED_EMAIL_HEADER),
             'enable_signup_password_confirmation': ENABLE_SIGNUP_PASSWORD_CONFIRMATION,
             'enable_ldap': app.state.config.ENABLE_LDAP,
