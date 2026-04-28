@@ -1,9 +1,11 @@
-name: Publish Main Image to GHCR
+name: Publish Image to GHCR
 
 on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
 
 env:
   REGISTRY: ghcr.io
@@ -22,7 +24,6 @@ jobs:
       - name: Set image name
         run: |
           echo "IMAGE_NAME=ghcr.io/${GITHUB_REPOSITORY,,}" >> "${GITHUB_ENV}"
-          echo "SHORT_SHA=${GITHUB_SHA::7}" >> "${GITHUB_ENV}"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -43,8 +44,10 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=main
-            type=sha,prefix=git-
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=git-,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
